@@ -28,10 +28,12 @@ import org.hl7.fhir.r5.renderers.utils.BaseWrappers.ResourceWrapper;
 import org.hl7.fhir.r5.renderers.utils.RenderingContext;
 import org.hl7.fhir.r5.renderers.utils.Resolver.ResourceContext;
 import org.hl7.fhir.r5.renderers.utils.Resolver.ResourceWithReference;
+import org.hl7.fhir.r5.terminologies.CodeSystemUtilities;
+import org.hl7.fhir.r5.utils.ToolingExtensions;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.xhtml.XhtmlNode;
 
-public class LibraryRenderer extends ResourceRenderer {
+public class LibraryRenderer extends MetadataResourceRenderer {
 
   private static final int DATA_IMG_SIZE_CUTOFF = 4000;
 
@@ -48,32 +50,38 @@ public class LibraryRenderer extends ResourceRenderer {
   }
 
   public boolean render(XhtmlNode x, ResourceWrapper lib) throws FHIRFormatError, DefinitionException, IOException {
+    PropertyWrapper publishers = lib.getChildByName("contact");
     PropertyWrapper authors = lib.getChildByName("author");
     PropertyWrapper editors = lib.getChildByName("editor");
     PropertyWrapper reviewers = lib.getChildByName("reviewer");
     PropertyWrapper endorsers = lib.getChildByName("endorser");
-    if ((authors != null && authors.hasValues()) || (editors != null && editors.hasValues()) || (reviewers != null && reviewers.hasValues()) || (endorsers != null && endorsers.hasValues())) {
-      boolean email = hasCT(authors, "email") || hasCT(editors, "email") || hasCT(reviewers, "email") || hasCT(endorsers, "email"); 
+    if ((publishers != null && publishers.hasValues()) || (authors != null && authors.hasValues()) || (editors != null && editors.hasValues()) || (reviewers != null && reviewers.hasValues()) || (endorsers != null && endorsers.hasValues())) {
+      boolean email = hasCT(publishers, "email") || hasCT(authors, "email") || hasCT(editors, "email") || hasCT(reviewers, "email") || hasCT(endorsers, "email");
       boolean phone = hasCT(authors, "phone") || hasCT(editors, "phone") || hasCT(reviewers, "phone") || hasCT(endorsers, "phone"); 
       boolean url = hasCT(authors, "url") || hasCT(editors, "url") || hasCT(reviewers, "url") || hasCT(endorsers, "url"); 
       x.h2().tx("Participants");
       XhtmlNode t = x.table("grid");
+      if (publishers != null) {
+        for (BaseWrapper cd : publishers.getValues()) {
+          participantRow(t, "Publisher", cd, email, phone, url);
+        }
+      }
       if (authors != null) {
         for (BaseWrapper cd : authors.getValues()) {
           participantRow(t, "Author", cd, email, phone, url);
         }
       }
-      if (authors != null) {
+      if (editors != null) {
         for (BaseWrapper cd : editors.getValues()) {
           participantRow(t, "Editor", cd, email, phone, url);
         }
       }
-      if (authors != null) {
+      if (reviewers != null) {
         for (BaseWrapper cd : reviewers.getValues()) {
           participantRow(t, "Reviewer", cd, email, phone, url);
         }
       }
-      if (authors != null) {
+      if (endorsers != null) {
         for (BaseWrapper cd : endorsers.getValues()) {
           participantRow(t, "Endorser", cd, email, phone, url);
         }
@@ -129,37 +137,17 @@ public class LibraryRenderer extends ResourceRenderer {
     return false;
   }
     
-  private boolean hasCT(PropertyWrapper prop, String type) throws UnsupportedEncodingException, FHIRException, IOException {
-    if (prop != null) {
-      for (BaseWrapper cd : prop.getValues()) {
-        PropertyWrapper telecoms = cd.getChildByName("telecom");
-        if (getContactPoint(telecoms, type) != null) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  private boolean hasCT(List<ContactDetail> list, String type) {
-    for (ContactDetail cd : list) {
-      for (ContactPoint t : cd.getTelecom()) {
-        if (type.equals(t.getSystem().toCode())) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  
   public boolean render(XhtmlNode x, Library lib) throws FHIRFormatError, DefinitionException, IOException {
-    if (lib.hasAuthor() || lib.hasEditor() || lib.hasReviewer() || lib.hasEndorser()) {
-      boolean email = hasCT(lib.getAuthor(), "email") || hasCT(lib.getEditor(), "email") || hasCT(lib.getReviewer(), "email") || hasCT(lib.getEndorser(), "email"); 
-      boolean phone = hasCT(lib.getAuthor(), "phone") || hasCT(lib.getEditor(), "phone") || hasCT(lib.getReviewer(), "phone") || hasCT(lib.getEndorser(), "phone"); 
-      boolean url = hasCT(lib.getAuthor(), "url") || hasCT(lib.getEditor(), "url") || hasCT(lib.getReviewer(), "url") || hasCT(lib.getEndorser(), "url"); 
+    renderMetadata(x, lib);
+    if (lib.hasContact() || lib.hasAuthor() || lib.hasEditor() || lib.hasReviewer() || lib.hasEndorser()) {
+      boolean email = hasCT(lib.getContact(), "email") || hasCT(lib.getAuthor(), "email") || hasCT(lib.getEditor(), "email") || hasCT(lib.getReviewer(), "email") || hasCT(lib.getEndorser(), "email");
+      boolean phone = hasCT(lib.getContact(), "phone") || hasCT(lib.getAuthor(), "phone") || hasCT(lib.getEditor(), "phone") || hasCT(lib.getReviewer(), "phone") || hasCT(lib.getEndorser(), "phone");
+      boolean url = hasCT(lib.getContact(), "url") || hasCT(lib.getAuthor(), "url") || hasCT(lib.getEditor(), "url") || hasCT(lib.getReviewer(), "url") || hasCT(lib.getEndorser(), "url");
       x.h2().tx("Participants");
       XhtmlNode t = x.table("grid");
+      for (ContactDetail cd: lib.getContact()) {
+        participantRow(t, "Publisher", cd, email, phone, url);
+      }
       for (ContactDetail cd : lib.getAuthor()) {
         participantRow(t, "Author", cd, email, phone, url);
       }
@@ -216,111 +204,6 @@ public class LibraryRenderer extends ResourceRenderer {
       }
     }
     return false;
-  }
-
-  private void renderParameter(XhtmlNode t, BaseWrapper p, boolean doco) throws UnsupportedEncodingException, FHIRException, IOException {
-    XhtmlNode tr = t.tr();
-    tr.td().tx(p.has("name") ? p.get("name").primitiveValue() : null);
-    tr.td().tx(p.has("use") ? p.get("use").primitiveValue() : null);
-    tr.td().tx(p.has("min") ? p.get("min").primitiveValue() : null);
-    tr.td().tx(p.has("max") ? p.get("max").primitiveValue() : null);
-    tr.td().tx(p.has("type") ? p.get("type").primitiveValue() : null);
-    if (doco) {
-      tr.td().tx(p.has("documentation") ? p.get("documentation").primitiveValue() : null);
-    }
-  }
-
-  private void renderParameter(XhtmlNode t, ParameterDefinition p, boolean doco) {
-    XhtmlNode tr = t.tr();
-    tr.td().tx(p.getName());
-    tr.td().tx(p.getUse().getDisplay());
-    tr.td().tx(p.getMin());
-    tr.td().tx(p.getMax());
-    tr.td().tx(p.getType().getDisplay());
-    if (doco) {
-      tr.td().tx(p.getDocumentation());
-    }
-  }
-
-  private void renderArtifact(XhtmlNode t, BaseWrapper ra, ResourceWrapper lib, boolean label, boolean display, boolean citation) throws UnsupportedEncodingException, FHIRException, IOException {
-    XhtmlNode tr = t.tr();
-    tr.td().tx(ra.has("type") ? ra.get("type").primitiveValue() : null);
-    if (label) {
-      tr.td().tx(ra.has("label") ? ra.get("label").primitiveValue() : null);
-    }
-    if (display) {
-      tr.td().tx(ra.has("display") ? ra.get("display").primitiveValue() : null);
-    }
-    if (citation) {
-      tr.td().markdown(ra.has("citation") ? ra.get("citation").primitiveValue() : null, "Citation");
-    }
-    if (ra.has("resource")) {
-      renderCanonical(lib, tr.td(), ra.get("resource").primitiveValue());
-    } else {
-      tr.td().tx(ra.has("url") ? ra.get("url").primitiveValue() : null);
-    }
-  }
-
-  private void renderArtifact(XhtmlNode t, RelatedArtifact ra, Resource lib, boolean label, boolean display, boolean citation) throws IOException {
-    XhtmlNode tr = t.tr();
-    tr.td().tx(ra.getType().getDisplay());
-    if (label) {
-      tr.td().tx(ra.getLabel());
-    }
-    if (display) {
-      tr.td().tx(ra.getDisplay());
-    }
-    if (citation) {
-      tr.td().markdown(ra.getCitation(), "Citation");
-    }
-    if (ra.hasResource()) {
-      renderCanonical(lib, tr.td(), ra.getResource());
-    } else {
-      tr.td().tx(ra.getUrl());
-    }
-  }
-
-  private void participantRow(XhtmlNode t, String label, BaseWrapper cd, boolean email, boolean phone, boolean url) throws UnsupportedEncodingException, FHIRException, IOException {
-    XhtmlNode tr = t.tr();
-    tr.td().tx(label);
-    tr.td().tx(cd.get("name") != null ? cd.get("name").primitiveValue() : null);
-    PropertyWrapper telecoms = cd.getChildByName("telecom");
-    if (email) {
-      renderContactPoint(tr.td(), getContactPoint(telecoms, "email"));
-    }
-    if (phone) {
-      renderContactPoint(tr.td(), getContactPoint(telecoms, "phone"));
-    }
-    if (url) {
-      renderContactPoint(tr.td(), getContactPoint(telecoms, "url"));
-    }
-  }
-
-  private ContactPoint getContactPoint(PropertyWrapper telecoms, String value) throws UnsupportedEncodingException, FHIRException, IOException {
-    for (BaseWrapper t : telecoms.getValues()) {
-      if (t.has("system")) {
-        String system = t.get("system").primitiveValue();
-        if (value.equals(system)) {
-          return (ContactPoint) t.getBase();
-        }
-      }
-    } 
-    return null;
-  }
-
-  private void participantRow(XhtmlNode t, String label, ContactDetail cd, boolean email, boolean phone, boolean url) {
-    XhtmlNode tr = t.tr();
-    tr.td().tx(label);
-    tr.td().tx(cd.getName());
-    if (email) {
-      renderContactPoint(tr.td(), cd.getEmail());
-    }
-    if (phone) {
-      renderContactPoint(tr.td(), cd.getPhone());
-    }
-    if (url) {
-      renderContactPoint(tr.td(), cd.getUrl());
-    }
   }
 
   public void describe(XhtmlNode x, Library lib) {
